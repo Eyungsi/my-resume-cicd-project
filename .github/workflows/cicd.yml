@@ -127,8 +127,11 @@ jobs:
 
       - name: Update task definition with new ECR image
         run: |
-          jq --arg IMAGE_URI "${{ needs.Build.outputs.image-uri }}" '.containerDefinitions[0].image = $IMAGE_URI' task-definition.json > register-task-definition.json
-         
+          jq --arg IMAGE_URI "${{ needs.Build.outputs.image-uri }}" \
+          '.containerDefinitions[0].image = $IMAGE_URI | 
+          .family = "'"${{ env.TASK_DEFINITION }}"'"' \
+          task-definition.json > register-task-definition.json
+                 
       - name: Register new task definition
         run: |
           aws ecs register-task-definition --cli-input-json file://register-task-definition.json
