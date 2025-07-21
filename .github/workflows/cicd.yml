@@ -127,7 +127,7 @@ jobs:
       - name: Update task definition with new ECR image
         run: |
          jq --arg uri "$IMAGE_URI" --arg name "$CONTAINER_NAME" \
-         '{family: .family, containerDefinitions: [.containerDefinitions[] | if .name == $name then .image = $uri else . end]}' td.json > register.json
+         '{family: .family, containerDefinitions: [.containerDefinitions[] | if .name == $name then .image = $uri else . end]}' task-definition.json > register.json
                  
       - name: Register new task definition
         run: |
