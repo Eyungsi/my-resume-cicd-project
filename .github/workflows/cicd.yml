@@ -123,16 +123,26 @@ jobs:
       - name: Download current task definition
         run: |
           aws ecs describe-task-definition --task-definition ${{ env.TASK_DEFINITION }} --query taskDefinition > task-definition.json
-         
+          echo "Original task definition:"
+          cat task-definition.json | jq .
+    
       - name: Update task definition with new ECR image
         run: |
-         jq --arg uri "$IMAGE_URI" --arg name "$CONTAINER_NAME" \
-         '{family: .family, containerDefinitions: [.containerDefinitions[] | if .name == $name then .image = $uri else . end]}' task-definition.json > register.json
-                 
+          jq \
+          --arg uri "${{ needs.Build.outputs.image-uri }}" \
+          --arg name "${{ env.CONTAINER_NAME }}" \
+          '.family = "'"${{ env.TASK_DEFINITION }}"'" |
+           .containerDefinitions[] |= if .name == $name then .image = $uri else . end' \
+          task-definition.json > register-task-definition.json
+        
+          echo "Updated task definition:"
+          cat register-task-definition.json | jq '.containerDefinitions[] | {name, image}'
+    
       - name: Register new task definition
         run: |
-          aws ecs register --cli-input-json file://register.json
-          echo "NEW_TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_DEFINITION }} --query 'taskDefinition.taskDefinitionArn' --output text)" >> $GITHUB_ENV
+          TASK_ARN=$(aws ecs register-task-definition --cli-input-json file://register-task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Registered task ARN: $TASK_ARN"
+          echo "NEW_TASK_DEFINITION=$TASK_ARN" >> $GITHUB_ENV
       
       - name: Update ECS service
         run: |
