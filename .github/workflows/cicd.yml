@@ -126,18 +126,13 @@ jobs:
          
       - name: Update task definition with new ECR image
         run: |
-         jq \
-         --arg IMAGE_URI "${{ needs.Build.outputs.image-uri }}" \
-         --arg CONTAINER_NAME "${{ env.CONTAINER_NAME }}" \
-         '(.containerDefinitions[] | select(.name == $CONTAINER_NAME)).image = $IMAGE_URI |
-         .family = "'"${{ env.TASK_DEFINITION }}"'"' \
-         task-definition.json > register-task-definition.json
+         jq --arg uri "$IMAGE_URI" --arg name "$CONTAINER_NAME" \
+         '{family: .family, containerDefinitions: [.containerDefinitions[] | if .name == $name then .image = $uri else . end]}' td.json > register.json
                  
       - name: Register new task definition
         run: |
-          aws ecs register-task-definition --cli-input-json file://register-task-definition.json
-          echo "NEW_TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_DEFINITION }} --query 'taskDefinition.taskDefinitionArn' --output text)" >> $GITHUB_ENV
-      
+         aws ecs register-task-definition --cli-input-json file://register.json
+         aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --task-definition $TASK_DEFINITION --force-new-deployment
       - name: Update ECS service
         run: |
           aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --task-definition ${{ env.NEW_TASK_DEFINITION }} --force-new-deployment
