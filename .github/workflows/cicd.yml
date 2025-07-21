@@ -122,13 +122,13 @@ jobs:
       
       - name: Download current task definition
         run: |
-          aws ecs describe-task-definition --task-definition ${{ env.TASK_DEFINITION }} --query taskDefinition > task-definition.json
-      
+          aws ecs describe-task-definition --task-definition ${{ env.TASK_DEFINITION }} --query taskDefinition > full-task-definition.json
+          jq '.taskDefinition' full-task-definition.json > task-definition.json
+
       - name: Update task definition with new ECR image
         run: |
-          jq --arg IMAGE_URI "${{ needs.Build.outputs.image-uri }}" '.containerDefinitions[0].image = $IMAGE_URI | 
-          del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' task-definition.json > register-task-definition.json
-      
+          jq --arg IMAGE_URI "${{ needs.Build.outputs.image-uri }}" '.containerDefinitions[0].image = $IMAGE_URI' task-definition.json > register-task-definition.json
+         
       - name: Register new task definition
         run: |
           aws ecs register-task-definition --cli-input-json file://register-task-definition.json
