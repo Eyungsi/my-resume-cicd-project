@@ -1,3 +1,4 @@
+
 name: Build, Push, and Deploy Image
 
 on:
@@ -12,7 +13,7 @@ permissions:
   pull-requests: write 
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_REGION: us-east-1
   AWS_ROLE: ${{ secrets.AWS_ACTION_ROLE }}
   ECR_REPO_NAME: my-resume-app
   IMAGE_TAG: ${{ github.run_number }}
@@ -92,15 +93,12 @@ jobs:
                 **Fix Version:** ${v.FixedVersion || 'None'}  
                 **Advisory:** ${v.PrimaryURL || 'N/A'}
               `).join('\n');
-
               const fsVulns = fsReport.Results?.flatMap(r => r.Vulnerabilities || []);
               const imageVulns = imageReport.Results?.flatMap(r => r.Vulnerabilities || []);
-
               let comment = '## 🔍 Trivy Security Report\n';
               if (fsVulns.length > 0) comment += `### 📂 Filesystem Vulnerabilities\n${formatVulns(fsVulns)}\n`;
               if (imageVulns.length > 0) comment += `### 🐳 Docker Image Vulnerabilities\n${formatVulns(imageVulns)}\n`;
               if (fsVulns.length + imageVulns.length === 0) comment += '✅ No critical/high vulnerabilities found.';
-
               await github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
@@ -123,26 +121,16 @@ jobs:
       - name: Download current task definition
         run: |
           aws ecs describe-task-definition --task-definition ${{ env.TASK_DEFINITION }} --query taskDefinition > task-definition.json
-          echo "Original task definition:"
-          cat task-definition.json | jq .
-    
+      
       - name: Update task definition with new ECR image
         run: |
-          jq \
-          --arg uri "${{ needs.Build.outputs.image-uri }}" \
-          --arg name "${{ env.CONTAINER_NAME }}" \
-          '.family = "'"${{ env.TASK_DEFINITION }}"'" |
-           .containerDefinitions[] |= if .name == $name then .image = $uri else . end' \
-          task-definition.json > register-task-definition.json
-        
-          echo "Updated task definition:"
-          cat register-task-definition.json | jq '.containerDefinitions[] | {name, image}'
-    
+          jq --arg IMAGE_URI "${{ needs.Build.outputs.image-uri }}" '.containerDefinitions[0].image = $IMAGE_URI | 
+          del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' task-definition.json > register-task-definition.json
+      
       - name: Register new task definition
         run: |
-          TASK_ARN=$(aws ecs register-task-definition --cli-input-json file://register-task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
-          echo "Registered task ARN: $TASK_ARN"
-          echo "NEW_TASK_DEFINITION=$TASK_ARN" >> $GITHUB_ENV
+          aws ecs register-task-definition --cli-input-json file://register-task-definition.json
+          echo "NEW_TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_DEFINITION }} --query 'taskDefinition.taskDefinitionArn' --output text)" >> $GITHUB_ENV
       
       - name: Update ECS service
         run: |
